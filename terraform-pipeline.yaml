@@ -1,0 +1,41 @@
+trigger:
+  branches:
+    include:
+      - main
+  paths:
+    include:
+      - terraform/main.tf
+
+pool:
+  vmImage: 'ubuntu-latest'
+
+variables:
+  serviceConnectionName: 'Stremlit-terraform'
+  terraformWorkingDirectory: 'terraform'
+  tfvarsFile: 'dev.tfvars'
+
+jobs:
+- job: Terraform
+  displayName: 'Terraform Plan and Apply'
+  steps:
+  - script: |
+      # Download and install Terraform
+      curl -o terraform.zip https://releases.hashicorp.com/terraform/1.0.0/terraform_1.0.0_linux_amd64.zip
+      unzip terraform.zip
+      sudo mv terraform /usr/local/bin/
+      terraform --version  # Verify Terraform installation
+    displayName: 'Install Terraform'
+
+  - task: AzureCLI@2
+    inputs:
+      azureSubscription: $(serviceConnectionName)
+      scriptType: 'bash'
+      scriptLocation: 'inlineScript'
+      inlineScript: |
+        az --version
+        cd $(terraformWorkingDirectory)
+        terraform init -backend-config="key=terraform.tfstate"
+        terraform refresh -var-file=$(tfvarsFile)
+        terraform plan -out=plan.out -var-file=$(tfvarsFile)
+        terraform apply -auto-approve plan.out
+    displayName: 'Terraform Init, Refresh, Plan, and Apply'

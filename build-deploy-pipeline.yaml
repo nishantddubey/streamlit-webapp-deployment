@@ -1,0 +1,56 @@
+trigger:
+  branches:
+    include:
+      - main
+  paths:
+    exclude:
+      - main.tf
+
+resources:
+  pipelines:
+    - pipeline: TerraformPipeline
+      source: terraform-pipeline  # Name of the Terraform pipeline
+      trigger: true
+
+variables:
+  azureSubscription: 'streamlit'  # Replace with your Azure subscription ID
+  acrLoginServer: 'streamlitacr0001.azurecr.io'  # Replace with your ACR login server URL
+  imageName: 'streamlit-webapp'  # Replace with your Docker image name
+  webAppName: 'streamlit-0001'  # Replace with your web app name from Terraform
+  resourceGroupName: 'Streamlit_poc'  # Replace with your Terraform resource group name
+
+stages:
+- stage: Build
+  jobs:
+  - job: Build
+    pool:
+      vmImage: 'ubuntu-latest'
+    steps:
+    - checkout: self
+    - task: Docker@2
+      displayName: 'Build and Push Docker Image'
+      inputs:
+        containerRegistry: 'streamlit-acr'  # Replace with your ACR name from Terraform
+        repository: '$(imageName)'
+        command: 'buildAndPush'
+        Dockerfile: '**/streamlit-app/dockerfile'  # Ensure the path to your Dockerfile is correct
+        tags: |
+          $(Build.BuildId)
+
+- stage: Deploy
+  dependsOn: Build
+  jobs:
+  - job: Deploy
+    pool:
+      vmImage: 'ubuntu-latest'
+    steps:
+    - task: AzureWebAppContainer@1
+      displayName: 'Deploy to Azure Web App'
+      inputs:
+        azureSubscription: '$(azureSubscription)'
+        appName: '$(webAppName)'
+        resourceGroupName: '$(resourceGroupName)'
+        imageName: '$(acrLoginServer)/$(imageName):$(Build.BuildId)'
+        containerCommand: ''
+        appSettings: '-PORT 8501'  # Corrected syntax for appSettings
+        configurationStrings: '-WEBSITE_WEBDEPLOY_USE_SCM=false'
